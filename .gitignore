@@ -1,0 +1,6 @@
+*~
+/*.prof
+/garminexport
+/gpxplotter
+/venv.garmin-plotter
+/map-*.html
