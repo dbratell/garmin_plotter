@@ -129,15 +129,86 @@ def read_gpx_file(gpxfile):
 
     return return_value
 
+def filter_outliers(segments):
+    """Filter outliers (for instance a gps plot on the other side of the
+    world)"""
+    total_segment_count = len(segments)
+    max_radius = 0
+    centers = []
+    for segment in segments:
+        boundaries = (np.min(segment["lon"]), np.max(segment["lon"]),
+                      np.min(segment["lat"]), np.max(segment["lat"]))
+        # FIXME: This is assuming that equal differences in latitude
+        # and longitude form squares which is very very far from true.
+        # It's *almost* true at the equator but nowhere else and near
+        # the poles it's infinitely wrong.
+        radius = np.sqrt((boundaries[1] - boundaries[0])**2 +
+                         (boundaries[3] - boundaries[2])**2) / 2
+        center = (boundaries[0] + (boundaries[1] - boundaries[0]) / 2,
+                  boundaries[2] + (boundaries[3] - boundaries[2]) / 2)
+        centers.append(center)
+        if radius > max_radius:
+            max_radius = radius
+
+    import sklearn
+    import sklearn.cluster
+    dbscan_result = sklearn.cluster.DBSCAN(eps=10*max_radius).fit(centers)
+    clusters = dbscan_result.labels_
+    cluster_labels = set(clusters)
+    if len(cluster_labels) == 1:
+        print("No outliers found")
+        return segments
+
+    target_cluster = None
+    for cluster in sorted(list(cluster_labels)):
+        count = sum(1 for c in clusters if c == cluster)
+        if count > 0.9 * total_segment_count:
+            # This is the cluster we'll plot
+            target_cluster = cluster
+        print("Cluster %d: %d members" % (cluster, count))
+
+    if target_cluster is None:
+        print("Data set too segmented so no single core set of data could be identified.")
+        print("Doing no filtering of --filter_outliers.")
+        return segments
+
+    print("Filtering out %d (of %d) outliers" % (
+        sum(1 for x in clusters if x != target_cluster), total_segment_count))
+    segments = [s for (s, c) in zip(segments, clusters) if c == target_cluster]
+    return segments
+
+def plot_segments(segments):
+    """Plot all the segments on a pyplot figure and return that figure."""
+    fig, ax1 = generate_map()
+
+    total_segment_count = len(segments)
+    for i, segment in enumerate(segments):
+        point_count = len(segment["lon"])
+        print("Plotting segment %d/%d (%d points) '%s'..." % (
+            (i + 1), total_segment_count, point_count, segment["name"]),
+              end="")
+        sys.stdout.flush()
+        start_time = time.time()
+        plot_map(ax1, segment)
+        plot_duration = time.time() - start_time
+        print("%.2f seconds (%.2f ms per point)" % (
+            plot_duration, 1000.0 * plot_duration / point_count))
+
+    fig.tight_layout()
+    ax1.use_sticky_edges = True  # Restore to default state
+    plt.autoscale(True)
+
+    return fig
+
 def main():
     """Main function when used as a script."""
     parser = argparse.ArgumentParser()
     parser.add_argument("directory")
     parser.add_argument("--activity", nargs="*")
     parser.add_argument("--since")
+    parser.add_argument("--filter_outliers", action="store_true")
 
     args = parser.parse_args()
-    fig, ax1 = generate_map()
 
     files = [x for x in os.listdir(args.directory) if x.endswith(".gpx")]
     tracks = []
@@ -158,26 +229,18 @@ def main():
             tracks.append(track)
         print("%.2f seconds" % (time.time() - start_time))
 
-    total_segment_count = sum(len(x["segments"]) for x in tracks)
-    i = 0
+    segments = []
     for track in tracks:
         for segment in track["segments"]:
-            i += 1
-            point_count = len(segment["lon"])
-            print("Plotting segment %d/%d (%d points) '%s' of %d..." % (
-                i, total_segment_count, point_count, track["name"][0]),
-                  end="")
-            sys.stdout.flush()
-            start_time = time.time()
-            plot_map(ax1, segment)
-            plot_duration = time.time() - start_time
-            print("%.2f seconds (%.2f ms per point)" % (
-                plot_duration, 1000.0 * plot_duration / point_count))
+            segment["name"] = track["name"][0]
+            segments.append(segment)
     tracks = None  # Allow GC of all the data
 
-    fig.tight_layout()
-    ax1.use_sticky_edges = True  # Restore to default state
-    plt.autoscale(True)
+    if args.filter_outliers:
+        segments = filter_outliers(segments)
+
+    fig = plot_segments(segments)
+    segments = None  # Allow GC of all the data
 
     print("Saving and opening in a browser (can take a couple of minutes)")
     sys.stdout.flush()

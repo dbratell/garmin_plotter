@@ -20,6 +20,8 @@ Run:
 Flags
 =====
 
+ --filter_outliers: If used, if there is a set of fewer than 10% of the total set somewhere far from the normal runs, then those will be ignored.
+
  --since: If set to a date, only gpx plots since that date will be included
 
 --activity: Specify what activities to include. Can be used several times like "--activity=walking --activity=cycling". If not set, everything will be included.
