@@ -1,3 +1,5 @@
+"""Plot gpx files to an html files with an svg and show in a browser."""
+
 import argparse
 import datetime
 import math
@@ -38,11 +40,13 @@ def plot_map(ax1, data):
 
 def extract_formatted_data(point, key, formatter):
     """Returns an array of data from children named key, converted with |formatter|"""
-    data = point.getElementsByTagName(key)
-    for x in data:
-        return [formatter(child.data) for child in x.childNodes]
+    key_elements = point.getElementsByTagName(key)
+    for key_element in key_elements:
+        return [formatter(child.data) for child in key_element.childNodes]
 
 def iso8601_to_datetime(iso8601):
+    """Converts a string to a datetime object, assuming the string is in a common
+    ISO-8601 format."""
     if "T" in iso8601:
         try:
             # Assume pure UTC first (and %z/%Z don't match Z on my computer).
@@ -126,6 +130,7 @@ def read_gpx_file(gpxfile):
     return return_value
 
 def main():
+    """Main function when used as a script."""
     parser = argparse.ArgumentParser()
     parser.add_argument("directory")
     parser.add_argument("--activity", nargs="*")
