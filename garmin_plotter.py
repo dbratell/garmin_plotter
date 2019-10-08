@@ -128,38 +128,47 @@ def read_gpx_file(gpxfile):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("directory")
-    parser.add_argument("--activity")
+    parser.add_argument("--activity", nargs="*")
     parser.add_argument("--since")
 
     args = parser.parse_args()
     fig, ax1 = generate_map()
 
     files = [x for x in os.listdir(args.directory) if x.endswith(".gpx")]
+    tracks = []
+    total_file_count = len(files)
     for k, file_name in enumerate(sorted(files)):
         file_name = os.path.join(args.directory, file_name)
         start_time = time.time()
-        print("Reading file %d: %s..." % ((k+1), file_name), end="")
+        print("Reading file %d/%d: %s..." % ((k+1), total_file_count, file_name), end="")
         sys.stdout.flush()
-        tracks = read_gpx_file(file_name)
-        print("%.2f seconds" % (time.time() - start_time))
-        for track in tracks:
+        file_tracks = read_gpx_file(file_name)
+        for track in file_tracks:
             if args.since and track["time"] < iso8601_to_datetime(args.since):
-                print("Skipping, too old.")
+                print("Skipping track, too old...", end="")
                 continue
-            if args.activity and track["type"][0] != args.activity:
-                print("Skipping, wrong type (%r)." % track["type"][0])
+            if args.activity and track["type"][0] not in args.activity:
+                print("Skipping track, wrong type (%r)..." % track["type"][0], end="")
                 continue
-            for i, segment in enumerate(track["segments"]):
-                point_count = len(segment["lon"])
-                print("Plotting segment %d (%d points) '%s' from file #%d: %s..." % (
-                    (i+1), point_count, track["name"][0],
-                    (k+1), os.path.basename(file_name)), end="")
-                sys.stdout.flush()
-                start_time = time.time()
-                plot_map(ax1, segment)
-                plot_duration = time.time() - start_time
-                print("%.2f seconds (%.2f ms per point)" % (
-                    plot_duration, 1000.0 * plot_duration / point_count))
+            tracks.append(track)
+        print("%.2f seconds" % (time.time() - start_time))
+
+    total_segment_count = sum(len(x["segments"]) for x in tracks)
+    i = 0
+    for track in tracks:
+        for segment in track["segments"]:
+            i += 1
+            point_count = len(segment["lon"])
+            print("Plotting segment %d/%d (%d points) '%s' of %d..." % (
+                i, total_segment_count, point_count, track["name"][0]),
+                  end="")
+            sys.stdout.flush()
+            start_time = time.time()
+            plot_map(ax1, segment)
+            plot_duration = time.time() - start_time
+            print("%.2f seconds (%.2f ms per point)" % (
+                plot_duration, 1000.0 * plot_duration / point_count))
+    tracks = None  # Allow GC of all the data
 
     fig.tight_layout()
     ax1.use_sticky_edges = True  # Restore to default state
